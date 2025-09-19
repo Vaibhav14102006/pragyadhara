@@ -597,7 +597,13 @@ export function GovernmentDashboard() {
                       cx="50%"
                       cy="50%"
                       labelLine={false}
-                      label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                      label={(props: any) => {
+                        const { name, value } = props;
+                        if (!name || !value) return '';
+                        const total = 45000 + 32000 + 18000; // Total from data values
+                        const percent = ((value / total) * 100).toFixed(0);
+                        return `${name} ${percent}%`;
+                      }}
                       outerRadius={80}
                       fill="#8884d8"
                       dataKey="value"

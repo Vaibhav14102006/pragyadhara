@@ -44,6 +44,11 @@ import {
   Sun,
   Mail,
   MicOff as MailOff,
+  Video,
+  Timer,
+  FolderOpen,
+  Upload,
+  Calendar,
 } from "lucide-react"
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts"
 
@@ -66,8 +71,10 @@ interface StudentProfile {
 interface Assignment {
   id: string
   title: string
+  description?: string
   class: string
   due: string
+  dueDate?: string
   submissions: StudentSubmission[]
   total: number
   status: "active" | "completed"
@@ -372,7 +379,7 @@ export function TeacherDashboard() {
   const addQuizQuestion = () => {
     const question = prompt("Enter question:")
     if (question) {
-      const options = []
+      const options: string[] = []
       for (let i = 0; i < 4; i++) {
         const option = prompt(`Enter option ${String.fromCharCode(65 + i)}:`)
         if (option) options.push(option)
@@ -1681,7 +1688,7 @@ export function TeacherDashboard() {
                     <h3 className="text-lg font-semibold text-green-800">{assignment.title}</h3>
                     <p className="text-sm text-green-600 mb-2">{assignment.description}</p>
                     <div className="flex gap-4 text-sm text-muted-foreground">
-                      <span>Due: {new Date(assignment.dueDate).toLocaleDateString()}</span>
+                      <span>Due: {assignment.dueDate && assignment.dueDate.length > 0 ? new Date(assignment.dueDate).toLocaleDateString() : assignment.due}</span>
                       <span>Submissions: {assignment.submissions.length}/{assignment.total}</span>
                     </div>
                   </div>
@@ -2741,11 +2748,11 @@ export function TeacherDashboard() {
             <CardContent className="space-y-4">
               <div className="space-y-2">
                 <h4 className="font-semibold text-green-800">How to create assignments?</h4>
-                <p className="text-sm text-muted-foreground">Go to Content Management > Create Assignment</p>
+                <p className="text-sm text-muted-foreground">Go to Content Management {'>'}  Create Assignment</p>
               </div>
               <div className="space-y-2">
                 <h4 className="font-semibold text-orange-800">How to track student progress?</h4>
-                <p className="text-sm text-muted-foreground">Check Analytics > Performance Reports</p>
+                <p className="text-sm text-muted-foreground">Check Analytics {'>'} Performance Reports</p>
               </div>
               <div className="space-y-2">
                 <h4 className="font-semibold text-green-800">How to communicate with parents?</h4>

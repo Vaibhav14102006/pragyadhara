@@ -156,7 +156,7 @@ export default function StudentDashboard() {
   const { user, signOut } = useAuth()
   const { t } = useLanguage()
   const { toast } = useToast();
-  const { progress, loading } = useFirestoreProgress(user?.uid);
+  const { progress, loading } = useFirestoreProgress();
   
   const [currentPage, setCurrentPage] = useState<StudentPage>("home");
   
@@ -563,7 +563,7 @@ export default function StudentDashboard() {
           </div>
         );
       case "lessons":
-        return <SubjectManager onReviewMaterial={handleReviewMaterial} />;
+        return <SubjectManager />;
       case "games":
         return <ComprehensiveGameHub />;
       case "pomodoro-timer":

@@ -7,7 +7,9 @@ import { AdminDashboard } from "@/components/dashboards/admin-dashboard"
 import { GovernmentDashboard } from "@/components/dashboards/government-dashboard"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { MultiLanguageSelector } from "@/components/ui/multi-language-selector"
+import { SimpleLanguageSelector } from "@/components/ui/comprehensive-language-selector"
+import { TranslatedText } from "@/components/ui/translated-text"
+import { EnhancedLanguageProvider } from "@/components/ui/enhanced-language-context"
 import {
   GraduationCap,
   Users,
@@ -48,7 +50,7 @@ function RoleSelectionPage({ onRoleSelect }: { onRoleSelect: (role: string) => v
             <div className="h-2 w-2 rounded-full bg-green-500"></div>
             सक्रिय • Active
           </div>
-          <MultiLanguageSelector />
+          <SimpleLanguageSelector />
         </div>
       </header>
 
@@ -56,10 +58,14 @@ function RoleSelectionPage({ onRoleSelect }: { onRoleSelect: (role: string) => v
         <div className="text-center mb-12">
           <div className="flex justify-center items-center gap-4 mb-6">
             <img src="/government-emblem.svg" alt="Government of India" className="w-16 h-12" />
-            <h2 className="text-4xl font-bold text-foreground">Welcome to Pragyadhara</h2>
+            <h2 className="text-4xl font-bold text-foreground">
+              <TranslatedText text="Welcome to Pragyadhara" />
+            </h2>
             <img src="/indian-education-emblem.svg" alt="Indian Education" className="w-16 h-16" />
           </div>
-          <p className="text-lg text-muted-foreground mb-2">भारतीय शिक्षा मंच - Empowering India through Digital Education</p>
+          <p className="text-lg text-muted-foreground mb-2">
+            <TranslatedText text="Empowering India through Digital Education" />
+          </p>
           <p className="text-sm text-muted-foreground">Ministry of Education, Government of India | शिक्षा मंत्रालय, भारत सरकार</p>
           <div className="flex justify-center items-center gap-4 mt-4">
             <img src="/digital-india-logo.svg" alt="Digital India" className="w-10 h-10" />
@@ -79,8 +85,12 @@ function RoleSelectionPage({ onRoleSelect }: { onRoleSelect: (role: string) => v
               <div className="mx-auto mb-4 p-3 bg-primary/10 rounded-full w-fit">
                 <img src="/student-logo.svg" alt="Student Portal" className="h-12 w-12" />
               </div>
-              <CardTitle className="text-2xl">Student</CardTitle>
-              <CardDescription className="text-base">Play games, track progress, submit assignments</CardDescription>
+              <CardTitle className="text-2xl">
+                <TranslatedText text="Student" />
+              </CardTitle>
+              <CardDescription className="text-base">
+                <TranslatedText text="Play games, track progress, submit assignments" />
+              </CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
               <div className="flex items-center gap-3 text-sm">
@@ -107,9 +117,11 @@ function RoleSelectionPage({ onRoleSelect }: { onRoleSelect: (role: string) => v
               <div className="mx-auto mb-4 p-3 bg-secondary/10 rounded-full w-fit">
                 <img src="/teacher-logo.svg" alt="Teacher Portal" className="h-12 w-12" />
               </div>
-              <CardTitle className="text-2xl">Teacher</CardTitle>
+              <CardTitle className="text-2xl">
+                <TranslatedText text="Teacher" />
+              </CardTitle>
               <CardDescription className="text-base">
-                Manage students, create assignments, view analytics
+                <TranslatedText text="Manage students, create assignments, view analytics" />
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">

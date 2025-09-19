@@ -6,7 +6,7 @@ import { Analytics } from "@vercel/analytics/next"
 import { ThemeProvider } from "@/components/theme-provider"
 import { Suspense } from "react"
 import { AuthProvider } from "@/lib/auth-context"
-import { LanguageProvider } from "@/lib/language-context"
+import { EnhancedLanguageProvider } from "@/components/ui/enhanced-language-context"
 import { Toaster } from "@/components/ui/toaster"
 import { GovernmentHeader } from "@/components/government-header"
 import "./globals.css"
@@ -58,13 +58,13 @@ export default function RootLayout({
             enableSystem 
             disableTransitionOnChange
           >
-            <LanguageProvider>
+            <EnhancedLanguageProvider>
               <AuthProvider>
                 <GovernmentHeader />
                 {children}
                 <Toaster />
               </AuthProvider>
-            </LanguageProvider>
+            </EnhancedLanguageProvider>
           </ThemeProvider>
           <Analytics />
         </Suspense>
