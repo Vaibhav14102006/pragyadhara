@@ -10,7 +10,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { useToast } from "@/hooks/use-toast"
-import { useLanguage } from "@/components/language/language-provider"
+import { useLanguage } from "@/lib/language-context"
+import { useAuth } from "@/lib/auth-context"
 import { FirebaseAnalyticsDashboard } from "@/components/analytics/firebase-analytics-dashboard"
 import { RealTimeDashboard } from "@/components/analytics/real-time-dashboard"
 import {
@@ -175,6 +176,7 @@ export function GovernmentDashboard() {
   const router = useRouter()
   const { toast } = useToast()
   const { t } = useLanguage()
+  const { signOut } = useAuth()
 
   const filteredStates = stateData.filter((state) => {
     if (selectedState !== "all" && state.name !== selectedState) return false
@@ -211,13 +213,20 @@ export function GovernmentDashboard() {
     }, 2000)
   }
 
-  const handleLogout = () => {
-    toast({
-      title: "Logging out...",
-      description: "You have been successfully logged out.",
-    })
-    // Add actual logout logic here
-    router.push('/login')
+  const handleLogout = async () => {
+    try {
+      await signOut()
+      toast({
+        title: "Logged out successfully",
+        description: "You have been logged out from the government dashboard.",
+      })
+    } catch (error) {
+      toast({
+        title: "Logout failed",
+        description: "There was an error logging you out. Please try again.",
+        variant: "destructive"
+      })
+    }
   }
 
   const navigateToDetail = (type: string) => {
@@ -228,9 +237,19 @@ export function GovernmentDashboard() {
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Government Education Dashboard</h1>
-          <p className="text-muted-foreground">National education platform oversight and policy insights</p>
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2">
+            <img src="/government-emblem.svg" alt="Government Emblem" className="w-12 h-12" />
+            <img src="/digital-india-logo.svg" alt="Digital India" className="w-12 h-12" />
+          </div>
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight">Government Education Dashboard</h1>
+            <p className="text-muted-foreground">National education platform oversight and policy insights</p>
+            <div className="flex items-center gap-2 mt-1">
+              <img src="/make-in-india-logo.svg" alt="Make in India" className="w-8 h-6" />
+              <span className="text-xs text-orange-600 font-semibold">भारत सरकार | Government of India</span>
+            </div>
+          </div>
         </div>
         <div className="flex gap-2">
           <Dialog open={showExportDialog} onOpenChange={setShowExportDialog}>

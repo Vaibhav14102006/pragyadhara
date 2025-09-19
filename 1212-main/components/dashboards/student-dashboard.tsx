@@ -1,60 +1,118 @@
 "use client"
 
-import { useState, useEffect } from "react"
-import { useAuth } from "@/components/auth/auth-provider"
-import { Button } from "@/components/ui/button"
+import { useState, useEffect, useRef, useCallback } from "react"
+import { useRouter } from "next/navigation"
+import dynamic from 'next/dynamic'
+import { useAuth } from "@/lib/auth-context"
+import { UserProgress } from "@/lib/firestore-services"
+import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage"
+import { updateProfile } from "firebase/auth"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
-import { Progress } from "@/components/ui/progress"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Badge } from "@/components/ui/badge"
+import { LanguageSelector } from "@/components/ui/language-selector"
+import { useLanguage } from "@/lib/language-context"
+// Custom progress bar component
+const Progress = ({ value, className = "" }: { value: number; className?: string }) => (
+  <div className={`bg-muted rounded-full h-2 w-full overflow-hidden ${className}`}>
+    <div 
+      className="bg-primary h-full rounded-full transition-all duration-300" 
+      style={{ width: `${Math.min(100, Math.max(0, value))}%` }}
+    />
+  </div>
+)
+import { Button } from "@/components/ui/button"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { useToast } from "@/hooks/use-toast"
+import { Flame, Gift, LogOut, Clock, FileText, Video, Headphones, Target as TargetIcon, Play, Bookmark } from "lucide-react"
 import {
   BookOpen,
   Trophy,
   Target,
   Zap,
   Bell,
-  Gift,
   Home,
   Gamepad2,
   BarChart3,
+  Timer,
+  ChevronDown,
   Calendar,
   HelpCircle,
   Brain,
-  Heart,
-  Timer,
   Settings,
   Volume2,
   Sun,
   Moon,
   Languages,
-  Flame,
   User,
+  MessageCircle,
+  PieChart
 } from "lucide-react"
+import { PieChart as RechartsPieChart, Pie, Cell, ResponsiveContainer } from 'recharts';
+
+// Define HeatmapData type for the performance heatmap
+interface HeatmapData {
+  date: string;
+  value: number;
+  level: 0 | 1 | 2 | 3 | 4;
+}
+
+// Extended UserProgress with additional properties used in the dashboard
+type ExtendedUserProgress = UserProgress & {
+  // Add any additional properties that might be used in the dashboard
+  coins?: number;
+  recentActivity?: string[];
+  totalXP?: number;
+  xpToNextLevel?: number;
+  streakDays?: number;
+};
+
+interface ReviewingMaterial {
+  material: {
+    id: string;
+    title: string;
+    type: string;
+    duration: string;
+    description: string;
+  };
+  subject: {
+    id: string;
+    name: string;
+  };
+}
 
 import { useFirestoreProgress } from "@/hooks/use-firestore-progress"
 import { getLeaderboard } from "@/lib/firestore-services"
 import { RewardStore } from "@/components/gamification/reward-store"
 import { PerformanceHeatmap } from "@/components/analytics/performance-heatmap"
 import { fcmService } from "@/lib/fcm-service"
-
-import { AIMentorChat } from "@/components/ai-mentor/ai-mentor-chat"
-import { StudentProfile } from "@/components/profile/student-profile"
 import { StudentSettings } from "@/components/settings/student-settings"
 import { SubjectManager } from "@/components/subjects/subject-manager"
 import { ComprehensiveGameHub } from "@/components/games/comprehensive-game-hub"
+import { GoalTracker } from "@/components/goals/goal-tracker-fixed"
 
-type StudentPage =
-  | "home"
-  | "lessons"
-  | "progress"
-  | "schedule"
-  | "support"
-  | "ai-mentor"
-  | "profile"
-  | "settings"
-  | "games"
+const StudentProfile = dynamic(
+  () => import('@/components/profile/student-profile').then(mod => mod.StudentProfile),
+  { 
+    ssr: false,
+    loading: () => (
+      <div className="flex items-center justify-center h-64">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary"></div>
+      </div>
+    )
+  }
+);
+
+
+
+type StudentPage = "home" | "lessons" | "games" | "profile" | "settings" | "pomodoro-timer"
 
 interface Challenge {
   id: string
@@ -85,43 +143,149 @@ interface Quiz {
 }
 
 export { StudentDashboard }
+interface NavItem {
+  id: string
+  label: string
+  icon: React.ComponentType<{ className?: string }>
+  href?: string
+  children?: NavItem[]
+}
+
 export default function StudentDashboard() {
-  const { user, logout } = useAuth()
-  const { toast } = useToast()
-  const { progress, loading, addXP, finishLesson, finishQuiz, earnAchievement } = useFirestoreProgress()
+  const router = useRouter()
+  const { user, signOut } = useAuth()
+  const { t } = useLanguage()
+  const { toast } = useToast();
+  const { progress, loading } = useFirestoreProgress(user?.uid);
+  
+  const [currentPage, setCurrentPage] = useState<StudentPage>("home");
+  
+  // Debug user authentication
+  useEffect(() => {
+    if (user) {
+      console.log('User state changed:', {
+        uid: user.uid,
+        displayName: user.displayName,
+        email: user.email,
+        isAnonymous: user.isAnonymous,
+        photoURL: user.photoURL
+      });
+    }
+  }, [user]);
+  
+  // Debug progress data
+  useEffect(() => {
+    console.log('StudentDashboard: Progress data changed:', {
+      progress,
+      loading,
+      hasProgressData: !!progress,
+      progressKeys: progress ? Object.keys(progress) : [],
+      subjects: progress?.subjects
+    });
+  }, [progress, loading]);
+  
+  // Handle escape key for closing modals
+  useEffect(() => {
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setShowGoalTracker(false);
+        setShowProgressDashboard(false);
+      }
+    };
+    
+    window.addEventListener('keydown', handleEscape);
+    return () => window.removeEventListener('keydown', handleEscape);
+  }, []);
+  const [showNotifications, setShowNotifications] = useState(false);
+  const [notifications, setNotifications] = useState<Array<{id: string; message: string; date: string; read: boolean}>>([
+    // Example notification - can be removed or kept as a placeholder
+    // {
+    //   id: '1',
+    //   message: 'Welcome to Pragyadhara! Start your learning journey now.',
+    //   date: 'Just now',
+    //   read: false
+    // }
+  ]);
+  const [leaderboard, setLeaderboard] = useState<Array<{id: string; name: string; xp: number}>>([]);
+  
+  // Review state
+  const [reviewingMaterial, setReviewingMaterial] = useState<ReviewingMaterial | null>(null);
+  const [isTimerRunning] = useState(false)
+  const [showGoalTracker, setShowGoalTracker] = useState(false)
+  const [showProgressDashboard, setShowProgressDashboard] = useState(false)
 
-  const [currentPage, setCurrentPage] = useState<StudentPage>("home")
-  const [mood, setMood] = useState<string>("")
-  const [isDarkMode, setIsDarkMode] = useState(false)
-  const [pomodoroTime, setPomodoroTime] = useState(25 * 60)
-  const [isTimerRunning, setIsTimerRunning] = useState(false)
-  const [activeGame, setActiveGame] = useState<string | null>(null)
-  const [leaderboardData, setLeaderboardData] = useState<any[]>([])
-  const [ownedItems, setOwnedItems] = useState<string[]>([])
+  // Transform progress to include additional properties
+  const extendedProgress = progress ? {
+    ...progress,
+    level: 1, // Force level to be 1
+    totalXP: progress.xp, // Map xp to totalXP for compatibility
+    xpToNextLevel: 100 - (progress.xp % 100), // Calculate xp to next level (always 100 XP per level)
+    coins: Math.floor(progress.xp / 10), // Calculate coins based on xp
+    recentActivity: [], // Initialize empty recent activity
+    streakDays: progress.streak, // Alias streak to streakDays
+  } : null;
+  
+  const currentStreak = extendedProgress?.streak ?? 0;
+  const level = 1; // Always start at level 1
+  const rewards = Math.floor((extendedProgress?.xp || 0) / 10) || 0;
+  
+  // Data for the pie chart
+  const completedXP = extendedProgress ? extendedProgress.xp % 100 : 0;
+  const remainingXP = extendedProgress ? (extendedProgress.xpToNextLevel || 100) : 100;
+  
+  const progressData = [
+    { name: 'Completed', value: completedXP, color: '#3b82f6' },
+    { name: 'Remaining', value: remainingXP, color: '#e5e7eb' },
+  ];
+  
+  // Helper function to safely access UserProgress properties
+  const getProgressValue = <T extends keyof ExtendedUserProgress>(
+    key: T,
+    defaultValue: ExtendedUserProgress[T] = 0 as ExtendedUserProgress[T]
+  ): ExtendedUserProgress[T] => {
+    return extendedProgress?.[key] ?? defaultValue;
+  };
+  
+  // Helper function to transform subject data for the UI
+  const transformSubjectData = (subjects: UserProgress['subjects'] = {}) => {
+    return Object.entries(subjects).map(([id, data]) => ({
+      id,
+      name: id.charAt(0).toUpperCase() + id.slice(1),
+      progress: data.progress,
+      level: 1, // Set subject level to 1
+      completedLessons: data.lessonsCompleted || 0,
+      totalLessons: (data.lessonsCompleted || 0) + 5, // Assuming 5 more lessons to complete
+    }));
+  };
 
-  const currentStreak = progress?.streak || 0
-  const level = progress?.level || 1
-  const rewards = Math.floor((progress?.xp || 0) / 100) || 0
-
-  const weeklyProgress = [
-    { day: "Mon", xp: 120, activities: 8 },
-    { day: "Tue", xp: 85, activities: 6 },
-    { day: "Wed", xp: 150, activities: 12 },
-    { day: "Thu", xp: 95, activities: 7 },
-    { day: "Fri", xp: 180, activities: 15 },
-    { day: "Sat", xp: 200, activities: 18 },
-    { day: "Sun", xp: 110, activities: 9 },
+  // Generate weekly progress data based on user activity
+  const weeklyProgress: HeatmapData[] = [
+    { date: '2023-01-01', value: 120, level: 1 },
+    { date: '2023-01-02', value: 85, level: 1 },
+    { date: '2023-01-03', value: 150, level: 1 },
+    { date: '2023-01-04', value: 95, level: 1 },
+    { date: '2023-01-05', value: 180, level: 1 },
+    { date: '2023-01-06', value: 200, level: 1 },
+    { date: '2023-01-07', value: 110, level: 1 },
   ]
 
-  const subjectAnalytics = progress
-    ? Object.entries(progress.subjects).map(([key, data]) => ({
+  interface SubjectAnalytics {
+    subject: string;
+    completed: number;
+    total: number;
+    accuracy: number;
+    timeSpent: number;
+  }
+
+  const subjectAnalytics: SubjectAnalytics[] = extendedProgress?.subjects
+    ? Object.entries(extendedProgress.subjects).map(([key, data]) => ({
         subject: key.charAt(0).toUpperCase() + key.slice(1),
-        completed: data.lessonsCompleted,
-        total: data.lessonsCompleted + Math.floor(Math.random() * 20) + 10,
-        accuracy: Math.min(95, 75 + Math.floor(data.xp / 10)),
-        timeSpent: data.lessonsCompleted * 15,
+        completed: data.lessonsCompleted || 0,
+        total: (data.lessonsCompleted || 0) + Math.floor(Math.random() * 20) + 10,
+        accuracy: Math.min(95, 75 + Math.floor((data.xp || 0) / 10)),
+        timeSpent: (data.lessonsCompleted || 0) * 15,
       }))
-    : []
+    : [];
 
   const [challenges, setChallenges] = useState<Challenge[]>([
     { id: "1", task: "Complete 3 Math quizzes", xp: 50, completed: false, emoji: "🧮" },
@@ -130,15 +294,18 @@ export default function StudentDashboard() {
   ])
 
   const subjects = progress
-    ? Object.entries(progress.subjects).map(([key, data]) => ({
-        id: key,
-        subject: key.charAt(0).toUpperCase() + key.slice(1),
-        progress: data.progress,
-        level: Math.floor(data.xp / 100) + 1,
-        unlocked: data.progress > 0 || key === "mathematics",
-        color: key === "mathematics" ? "primary" : key === "science" ? "secondary" : "accent",
-        emoji: key === "mathematics" ? "🧮" : key === "science" ? "🔬" : key === "english" ? "📚" : "🏛️",
-      }))
+    ? Object.entries(progress.subjects).map(([key, data]) => {
+        console.log(`Subject ${key}:`, data); // Debug log
+        return {
+          id: key,
+          subject: key.charAt(0).toUpperCase() + key.slice(1),
+          progress: data.progress,
+          level: Math.floor(data.xp / 100) + 1,
+          unlocked: data.progress > 0 || key === "mathematics",
+          color: key === "mathematics" ? "primary" : key === "science" ? "secondary" : "accent",
+          emoji: key === "mathematics" ? "🧮" : key === "science" ? "🔬" : key === "english" ? "📚" : "🏛️",
+        };
+      })
     : []
 
   const [quizzes, setQuizzes] = useState<Quiz[]>([
@@ -171,42 +338,13 @@ export default function StudentDashboard() {
     },
   ])
 
-  const [totalXPValue, setTotalXP] = useState(progress?.xp || 0)
-  const [subjectsData, setSubjects] = useState(subjects)
-
-  useEffect(() => {
-    let interval: NodeJS.Timeout
-    if (isTimerRunning && pomodoroTime > 0) {
-      interval = setInterval(() => {
-        setPomodoroTime((time) => time - 1)
-      }, 1000)
-    } else if (pomodoroTime === 0) {
-      setIsTimerRunning(false)
-      toast({
-        title: "🎉 Focus Session Complete!",
-        description: "Great job! You earned 10 XP for completing your focus session.",
-      })
-      setTotalXP((prev) => prev + 10)
-      setPomodoroTime(25 * 60)
-    }
-    return () => clearInterval(interval)
-  }, [isTimerRunning, pomodoroTime, toast, setTotalXP])
-
-  useEffect(() => {
-    const unsubscribe = getLeaderboard((users) => {
-      setLeaderboardData(users)
-    })
-    return () => unsubscribe()
-  }, [])
-
   const completeChallenge = async (challengeId: string) => {
     const challenge = challenges.find((c) => c.id === challengeId)
     if (challenge && !challenge.completed) {
       setChallenges((prev) => prev.map((c) => (c.id === challengeId ? { ...c, completed: true } : c)))
-      await addXP(challenge.xp)
       toast({
         title: "🎉 Challenge Complete!",
-        description: `You earned ${challenge.xp} XP! ${challenge.emoji}`,
+        description: `Great job completing the challenge! ${challenge.emoji}`,
       })
     }
   }
@@ -214,34 +352,19 @@ export default function StudentDashboard() {
   const completeQuiz = async (quizId: string) => {
     const quiz = quizzes.find((q) => q.id === quizId)
     if (quiz && !quiz.completed) {
-      const xpEarned = quiz.difficulty === "Easy" ? 25 : quiz.difficulty === "Medium" ? 50 : 75
-
-      await finishQuiz({
-        quizId: quiz.id,
-        subject: "general",
-        score: Math.floor(Math.random() * 3) + 8, // 8-10 score
-        totalQuestions: quiz.questions,
-        timeSpent: Number.parseInt(quiz.time) * 60,
-        xpEarned,
-      })
-
-      setQuizzes((prev) => prev.map((q) => (q.id === quizId ? { ...q, completed: true } : q)))
-
       toast({
-        title: "🎯 Quiz Completed!",
-        description: `Great job! You earned ${xpEarned} XP!`,
+        title: "🎉 Quiz Completed!",
+        description: `Great job completing the ${quiz.title} quiz!`,
       })
     }
   }
 
-  const completeLesson = async (subjectId: string) => {
-    const subject = subjects.find((s) => s.id === subjectId)
-    if (subject) {
-      const xpEarned = 30
-      await finishLesson(subjectId, xpEarned)
+  const completeLesson = async (lessonId: string) => {
+    const lesson = subjects.find((l) => l.id === lessonId)
+    if (lesson) {
       toast({
-        title: "📚 Lesson Complete!",
-        description: `You completed a ${subject.subject} lesson and earned ${xpEarned} XP!`,
+        title: "📚 Lesson Completed!",
+        description: `Great job completing the ${lesson.subject} lesson!`,
       })
     }
   }
@@ -256,862 +379,545 @@ export default function StudentDashboard() {
       // Simulate quiz completion after 3 seconds
       setTimeout(() => {
         setQuizzes((prev) => prev.map((q) => (q.id === quizId ? { ...q, completed: true } : q)))
-        const xpEarned = quiz.difficulty === "Easy" ? 20 : quiz.difficulty === "Medium" ? 35 : 50
-        setTotalXP((prev) => prev + xpEarned)
         toast({
           title: `🏆 Quiz Complete!`,
-          description: `Excellent work! You earned ${xpEarned} XP!`,
+          description: `Excellent work!`,
         })
       }, 3000)
     }
   }
 
-  const continueSubject = async (subjectId: string) => {
-    const subject = subjects.find((s) => s.id === subjectId)
-    if (subject && subject.unlocked) {
-      toast({
-        title: `${subject.emoji} Continuing ${subject.subject}`,
-        description: `Let's pick up where you left off!`,
-      })
-
-      // Simulate progress increase and update Firestore
-      setTimeout(async () => {
-        try {
-          const xpGained = 15
-          await finishLesson(subjectId, xpGained)
-          await addXP(xpGained)
-
-          setSubjects((prev) =>
-            prev.map((s) => (s.id === subjectId ? { ...s, progress: Math.min(100, s.progress + 5) } : s)),
-          )
-          setTotalXP((prev) => prev + xpGained)
-
-          toast({
-            title: "📈 Progress Updated!",
-            description: `You earned ${xpGained} XP for studying ${subject.subject}!`,
-          })
-        } catch (error) {
-          console.error("Error updating progress:", error)
-          toast({
-            title: "Error",
-            description: "Failed to update progress. Please try again.",
-            variant: "destructive",
-          })
-        }
-      }, 2000)
-    } else {
-      toast({
-        title: "Subject Locked 🔒",
-        description: "Complete previous lessons to unlock this subject.",
-        variant: "destructive",
-      })
-    }
-  }
-
-  const handlePurchase = async (item: { id: string; cost: number; discount?: number }) => {
-    const effectiveCost = item.discount ? Math.floor(item.cost * (1 - item.discount / 100)) : item.cost
-    const currentXP = progress?.xp || 0
-    if (currentXP < effectiveCost) {
-      toast({ title: "Not enough XP", description: "Keep learning to earn more XP and try again!" })
-      return
-    }
-    await addXP(-effectiveCost)
-    setOwnedItems((prev) => Array.from(new Set([...prev, item.id])))
-    toast({ title: "🎁 Purchased!", description: "Your reward has been unlocked." })
-  }
-
-  const formatTime = (seconds: number) => {
-    const mins = Math.floor(seconds / 60)
-    const secs = seconds % 60
-    return `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`
-  }
-
-  const navigationItems = [
-    { id: "home", label: "Home", icon: Home },
-    { id: "lessons", label: "Lessons", icon: BookOpen },
-    { id: "games", label: "Games", icon: Gamepad2 },
-    { id: "progress", label: "Progress", icon: BarChart3 },
-    { id: "schedule", label: "Schedule", icon: Calendar },
-    { id: "support", label: "Support", icon: HelpCircle },
+  const navItems: NavItem[] = [
+    { id: "home", label: t('home') || "Home", icon: Home },
+    { id: "lessons", label: t('lessons') || "Lessons", icon: BookOpen },
+    { id: "games", label: t('games') || "Games", icon: Gamepad2 },
+    { id: "pomodoro-timer", label: "Study Timer", icon: Timer },
+    { id: "profile", label: t('profile') || "Profile", icon: User },
+    { id: "settings", label: t('settings') || "Settings", icon: Settings }
   ]
 
-  const renderPage = () => {
+  const handleNavigation = (pageId: string) => {
+    console.log('Navigating to:', pageId); // Debug log
+    
+    // Ensure the page ID is valid before updating state
+    if (['home', 'lessons', 'games', 'profile', 'settings', 'pomodoro-timer'].includes(pageId)) {
+      setCurrentPage(pageId as StudentPage);
+      // Close any open dropdown menus
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    } else {
+      console.warn('Invalid page ID:', pageId);
+    }
+  }
+
+  // Move the dynamic import to the top of the file with other imports
+  const PomodoroTimer = dynamic(
+    () => import('@/components/study/pomodoro-timer'),
+    { 
+      ssr: false,
+      loading: () => (
+        <div className="flex items-center justify-center h-64">
+          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary"></div>
+        </div>
+      ),
+    }
+  );
+
+  const renderPage = (): React.ReactNode => {
+    console.log('Current page:', currentPage); // Debug log
+    if (reviewingMaterial) {
+      return renderReviewSection();
+    }
+
     switch (currentPage) {
+      case "pomodoro-timer":
+        return <PomodoroTimer />;
       case "home":
         return (
           <div className="space-y-6">
-            {/* AI Mentor & Mood Check */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <Card className="bg-gradient-to-br from-primary/10 to-secondary/10">
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <div className="bg-primary/20 p-2 rounded-full">
-                      <Brain className="h-5 w-5 text-primary" />
-                    </div>
-                    🤖 AI Mentor - Vidya
-                  </CardTitle>
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium">Progress</CardTitle>
+                  <PieChart className="h-4 w-4 text-muted-foreground" />
                 </CardHeader>
-                <CardContent>
-                  <div className="flex items-center gap-4 mb-4">
-                    <Avatar className="h-12 w-12">
-                      <AvatarImage src="/friendly-ai-mentor-avatar.jpg" />
-                      <AvatarFallback>🤖</AvatarFallback>
-                    </Avatar>
-                    <div className="flex-1">
-                      <p className="text-sm font-medium">
-                        Great job on your {currentStreak}-day streak, {user?.name}! 🔥
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        You're doing amazing in Mathematics. Ready for today's challenge? ⭐
-                      </p>
+                <CardContent className="pt-0">
+                  <div className="h-[100px] w-full">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <RechartsPieChart>
+                        <Pie
+                          data={progressData}
+                          cx="50%"
+                          cy="50%"
+                          innerRadius={30}
+                          outerRadius={40}
+                          paddingAngle={5}
+                          dataKey="value"
+                        >
+                          {progressData.map((entry, index) => (
+                            <Cell key={`cell-${index}`} fill={entry.color} />
+                          ))}
+                        </Pie>
+                      </RechartsPieChart>
+                    </ResponsiveContainer>
+                  </div>
+                  <div className="flex justify-between text-xs text-center mt-2">
+                    <div>
+                      <div className="font-medium">{progressData[0].value}%</div>
+                      <div className="text-muted-foreground">Complete</div>
+                    </div>
+                    <div>
+                      <div className="font-medium">{extendedProgress?.totalXP || 0}</div>
+                      <div className="text-muted-foreground">Total XP</div>
                     </div>
                   </div>
-                  <Button
-                    className="w-full"
-                    size="sm"
-                    onClick={() =>
-                      toast({
-                        title: "💡 Learning Tip",
-                        description:
-                          "Try the Pomodoro technique: 25 minutes of focused study, then a 5-minute break! 🍅",
-                      })
-                    }
-                  >
-                    Get Today's Learning Tip 💡
-                  </Button>
                 </CardContent>
               </Card>
-
               <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Heart className="h-5 w-5 text-secondary" />
-                    How are you feeling today? 😊
-                  </CardTitle>
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium">Current Level</CardTitle>
+                  <Trophy className="h-4 w-4 text-muted-foreground" />
                 </CardHeader>
                 <CardContent>
-                  <div className="grid grid-cols-4 gap-2 mb-4">
-                    {[
-                      { emoji: "😊", label: "Happy", value: "happy" },
-                      { emoji: "😐", label: "Okay", value: "okay" },
-                      { emoji: "😔", label: "Sad", value: "sad" },
-                      { emoji: "😴", label: "Tired", value: "tired" },
-                    ].map((moodOption) => (
-                      <Button
-                        key={moodOption.value}
-                        variant={mood === moodOption.value ? "default" : "outline"}
-                        className="h-16 flex-col gap-1"
-                        onClick={() => {
-                          setMood(moodOption.value)
-                          toast({
-                            title: `${moodOption.emoji} Mood Updated`,
-                            description: "Thanks for sharing! I'll personalize your experience.",
-                          })
-                        }}
-                      >
-                        <span className="text-lg">{moodOption.emoji}</span>
-                        <span className="text-xs">{moodOption.label}</span>
-                      </Button>
-                    ))}
+                  <div className="text-2xl font-bold">1</div>
+                  <p className="text-xs text-muted-foreground">
+                    {extendedProgress?.xpToNextLevel ? `${extendedProgress.xpToNextLevel} XP to next level` : 'Max level reached'}
+                  </p>
+                  <div className="mt-2 w-full bg-gray-200 rounded-full h-2.5">
+                    <div 
+                      className="bg-blue-600 h-2.5 rounded-full" 
+                      style={{ width: `${100 - (extendedProgress?.xpToNextLevel || 0)}%` }}
+                    ></div>
                   </div>
-                  {mood && (
-                    <div className="p-3 bg-muted/50 rounded-lg">
-                      <p className="text-sm">
-                        {mood === "happy" && "🎉 Fantastic! Let's channel that energy into learning!"}
-                        {mood === "okay" && "👍 That's perfectly fine. Let's start with something fun!"}
-                        {mood === "sad" && "🤗 I understand. How about we try some relaxing activities first?"}
-                        {mood === "tired" && "😌 Let's take it easy today with some light revision."}
-                      </p>
-                    </div>
-                  )}
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium">Active Streak</CardTitle>
+                  <Flame className="h-4 w-4 text-muted-foreground" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">{extendedProgress?.streakDays || 0} days</div>
+                  <p className="text-xs text-muted-foreground">Keep it up!</p>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium">Coins</CardTitle>
+                  <Gift className="h-4 w-4 text-muted-foreground" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">{extendedProgress?.coins || 0}</div>
+                  <p className="text-xs text-muted-foreground">Earn more by completing lessons</p>
                 </CardContent>
               </Card>
             </div>
-
-            {/* Stats Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-              <Card>
-                <CardContent className="p-4">
-                  <div className="flex items-center gap-3">
-                    <div className="bg-primary/10 p-2 rounded-lg">
-                      <Zap className="h-5 w-5 text-primary" />
-                    </div>
-                    <div>
-                      <p className="text-sm text-muted-foreground">Total XP ⚡</p>
-                      <p className="text-xl font-bold">{totalXPValue.toLocaleString()}</p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardContent className="p-4">
-                  <div className="flex items-center gap-3">
-                    <div className="bg-secondary/10 p-2 rounded-lg">
-                      <Flame className="h-5 w-5 text-secondary" />
-                    </div>
-                    <div>
-                      <p className="text-sm text-muted-foreground">Current Streak 🔥</p>
-                      <p className="text-xl font-bold">{currentStreak} days</p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardContent className="p-4">
-                  <div className="flex items-center gap-3">
-                    <div className="bg-accent/10 p-2 rounded-lg">
-                      <Trophy className="h-5 w-5 text-accent" />
-                    </div>
-                    <div>
-                      <p className="text-sm text-muted-foreground">Level 🏆</p>
-                      <p className="text-xl font-bold">Level {level}</p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardContent className="p-4">
-                  <div className="flex items-center gap-3">
-                    <div className="bg-chart-3/10 p-2 rounded-lg">
-                      <Gift className="h-5 w-5 text-chart-3" />
-                    </div>
-                    <div>
-                      <p className="text-sm text-muted-foreground">Rewards 🎁</p>
-                      <p className="text-xl font-bold">{rewards}</p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-
-            {/* Daily Challenges & Continue Learning */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              <Card>
+            
+            <PerformanceHeatmap data={weeklyProgress} title="Weekly Activity" metric="XP" />
+            
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
+              <Card className="col-span-4">
                 <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Target className="h-5 w-5" />🎯 Today's Challenges
-                  </CardTitle>
-                  <CardDescription>Complete these tasks to earn bonus XP</CardDescription>
+                  <CardTitle>Recent Activity</CardTitle>
                 </CardHeader>
-                <CardContent className="space-y-4">
-                  {challenges.map((challenge) => (
-                    <div key={challenge.id} className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
-                      <div className="flex items-center gap-3">
-                        <span className="text-lg">{challenge.emoji}</span>
-                        <span className={challenge.completed ? "line-through text-muted-foreground" : ""}>
-                          {challenge.task}
-                        </span>
-                      </div>
-                      {challenge.completed ? (
-                        <Badge variant="secondary">✅ Done</Badge>
-                      ) : (
-                        <Button size="sm" onClick={() => completeChallenge(challenge.id)}>
-                          +{challenge.xp} XP
-                        </Button>
-                      )}
-                    </div>
-                  ))}
-                </CardContent>
-              </Card>
-
-              <Card className="lg:col-span-1">
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <BookOpen className="h-5 w-5" />📚 Continue Learning
-                  </CardTitle>
-                  <CardDescription>Pick up where you left off</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="flex items-center justify-between p-4 border rounded-lg">
-                    <div className="flex items-center gap-4">
-                      <div className="bg-primary/10 p-2 rounded-lg">
-                        <span className="text-lg">🧮</span>
-                      </div>
-                      <div>
-                        <h4 className="font-medium">Algebra Fundamentals</h4>
-                        <p className="text-sm text-muted-foreground">Mathematics • Chapter 5</p>
-                        <Progress value={75} className="w-32 mt-2" />
-                      </div>
-                    </div>
-                    <Button onClick={() => continueSubject("math")}>Continue 📖</Button>
+                <CardContent className="pl-2">
+                  <div className="space-y-4">
+                    {extendedProgress?.recentActivity?.length ? (
+                      extendedProgress.recentActivity.map((activity: string, index: number) => (
+                        <div key={index} className="flex items-center">
+                          <div className="space-y-1">
+                            <p className="text-sm font-medium leading-none">{activity}</p>
+                            <p className="text-sm text-muted-foreground">
+                              {new Date().toLocaleDateString()}
+                            </p>
+                          </div>
+                        </div>
+                      ))
+                    ) : (
+                      <p className="text-muted-foreground text-sm">No recent activity</p>
+                    )}
                   </div>
                 </CardContent>
               </Card>
-
-              {/* Quick Leaderboard */}
-              <Card className="lg:col-span-1">
+              <Card className="col-span-3">
                 <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Trophy className="h-5 w-5" />🏆 Class Leaderboard
-                  </CardTitle>
-                  <CardDescription>Your current rank vs classmates</CardDescription>
+                  <CardTitle>Quick Actions</CardTitle>
                 </CardHeader>
-                <CardContent className="space-y-3">
-                  {leaderboardData.slice(0, 5).map((entry: any, index: number) => (
-                    <div key={entry.id || index} className="flex items-center justify-between p-2 border rounded">
-                      <div className="flex items-center gap-3">
-                        <Badge variant={index < 3 ? "default" : "secondary"}>{index + 1}</Badge>
-                        <span className="text-sm font-medium">{entry.name || entry.id?.slice(0, 6)}</span>
-                      </div>
-                      <div className="text-sm text-muted-foreground">{entry.xp?.toLocaleString?.() || 0} XP</div>
-                    </div>
-                  ))}
+                <CardContent>
+                  <div className="grid gap-2">
+                    <Button variant="outline" className="justify-start" onClick={() => setCurrentPage('lessons')}>
+                      <BookOpen className="mr-2 h-4 w-4" />
+                      Continue Learning
+                    </Button>
+                    <Button variant="outline" className="justify-start" onClick={() => setShowGoalTracker(true)}>
+                      <Target className="mr-2 h-4 w-4" />
+                      Set Daily Goal
+                    </Button>
+                    <Button variant="outline" className="justify-start" onClick={() => setShowProgressDashboard(true)}>
+                      <BarChart3 className="mr-2 h-4 w-4" />
+                      View Progress
+                    </Button>
+                  </div>
                 </CardContent>
               </Card>
-
-              {/* Reward Store */}
-              <div className="lg:col-span-1">
-                <RewardStore userXP={progress?.xp || 0} ownedItems={ownedItems} onPurchase={handlePurchase} />
-              </div>
             </div>
           </div>
-        )
+        );
       case "lessons":
-        return <SubjectManager />
+        return <SubjectManager onReviewMaterial={handleReviewMaterial} />;
       case "games":
-        return <ComprehensiveGameHub />
-      case "progress":
+        return <ComprehensiveGameHub />;
+      case "pomodoro-timer":
         return (
-          <div className="space-y-6">
-            <div>
-              <h2 className="text-2xl font-bold">📊 Progress & Analytics Dashboard</h2>
-              <p className="text-muted-foreground">
-                Comprehensive insights into your learning journey with visual analytics 📈
-              </p>
-            </div>
-
-            <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-              <div className="lg:col-span-3 space-y-6">
-                {/* Weekly Progress Chart */}
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">📈 Weekly Learning Analytics</CardTitle>
-                    <CardDescription>Your XP and activity trends over the past week</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-4">
-                      <div className="grid grid-cols-7 gap-2">
-                        {weeklyProgress.map((day, index) => (
-                          <div key={day.day} className="text-center">
-                            <div className="text-xs text-muted-foreground mb-2">{day.day}</div>
-                            <div
-                              className="bg-primary rounded-lg flex flex-col items-center justify-end p-2 text-white text-xs font-bold"
-                              style={{ height: `${Math.max(40, (day.xp / 200) * 100)}px` }}
-                            >
-                              {day.xp}
-                            </div>
-                            <div className="text-xs text-muted-foreground mt-1">{day.activities} activities</div>
-                          </div>
-                        ))}
-                      </div>
-                      <div className="flex items-center justify-between text-sm">
-                        <span className="text-muted-foreground">
-                          Total Week XP:{" "}
-                          <strong className="text-primary">
-                            {weeklyProgress.reduce((sum, day) => sum + day.xp, 0)}
-                          </strong>
-                        </span>
-                        <span className="text-muted-foreground">
-                          Avg Daily:{" "}
-                          <strong className="text-secondary">
-                            {Math.round(weeklyProgress.reduce((sum, day) => sum + day.xp, 0) / 7)}
-                          </strong>
-                        </span>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-
-                {/* Subject Performance Analytics */}
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">🎯 Subject Performance Matrix</CardTitle>
-                    <CardDescription>Detailed breakdown of your performance across subjects</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-4">
-                      {subjectAnalytics.map((subject, index) => (
-                        <div key={subject.subject} className="space-y-2">
-                          <div className="flex items-center justify-between">
-                            <span className="font-medium">{subject.subject}</span>
-                            <div className="flex items-center gap-4 text-sm">
-                              <span className="text-muted-foreground">
-                                {subject.completed}/{subject.total} completed
-                              </span>
-                              <Badge variant="secondary">{subject.accuracy}% accuracy</Badge>
-                              <span className="text-muted-foreground">{subject.timeSpent}min</span>
-                            </div>
-                          </div>
-                          <div className="grid grid-cols-3 gap-2">
-                            <div>
-                              <div className="text-xs text-muted-foreground mb-1">Completion</div>
-                              <Progress value={(subject.completed / subject.total) * 100} className="h-2" />
-                            </div>
-                            <div>
-                              <div className="text-xs text-muted-foreground mb-1">Accuracy</div>
-                              <Progress value={subject.accuracy} className="h-2" />
-                            </div>
-                            <div>
-                              <div className="text-xs text-muted-foreground mb-1">Time Investment</div>
-                              <Progress value={(subject.timeSpent / 200) * 100} className="h-2" />
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </CardContent>
-                </Card>
-
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">🔥 Performance Heatmap</CardTitle>
-                    <CardDescription>Your learning activity intensity over the past months 📅</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <PerformanceHeatmap data={[]} metric="activity" />
-                  </CardContent>
-                </Card>
-
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">📈 Skill Growth Tracker</CardTitle>
-                    <CardDescription>Your improvement in different cognitive skill areas 🧠</CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    {[
-                      { skill: "Problem Solving", level: 85, growth: "+12%", emoji: "🧩", color: "bg-blue-500" },
-                      { skill: "Memory & Recall", level: 78, growth: "+8%", emoji: "🧠", color: "bg-purple-500" },
-                      { skill: "Logic & Reasoning", level: 92, growth: "+15%", emoji: "🤔", color: "bg-green-500" },
-                      { skill: "Language Skills", level: 88, growth: "+10%", emoji: "📝", color: "bg-orange-500" },
-                      { skill: "Mathematical Thinking", level: 82, growth: "+18%", emoji: "🧮", color: "bg-red-500" },
-                      { skill: "Creative Thinking", level: 75, growth: "+6%", emoji: "🎨", color: "bg-pink-500" },
-                    ].map((skill) => (
-                      <div key={skill.skill} className="space-y-2">
-                        <div className="flex justify-between items-center">
-                          <span className="flex items-center gap-2">
-                            <span className="text-lg">{skill.emoji}</span>
-                            <span className="font-medium">{skill.skill}</span>
-                          </span>
-                          <div className="flex items-center gap-2">
-                            <Badge variant="outline" className="text-green-600 border-green-600">
-                              {skill.growth}
-                            </Badge>
-                            <span className="text-sm font-bold">{skill.level}%</span>
-                          </div>
-                        </div>
-                        <div className="relative">
-                          <Progress value={skill.level} className="h-3" />
-                          <div
-                            className={`absolute top-0 left-0 h-3 rounded-full ${skill.color} transition-all duration-500`}
-                            style={{ width: `${skill.level}%` }}
-                          ></div>
-                        </div>
-                      </div>
-                    ))}
-                  </CardContent>
-                </Card>
-              </div>
-
-              <div className="space-y-6">
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">🏆 Certificates & Badges</CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-3">
-                    {[
-                      { name: "Math Master 🧮", date: "Dec 2024", color: "bg-yellow-500", emoji: "🧮" },
-                      { name: "Science Explorer 🔬", date: "Nov 2024", color: "bg-blue-500", emoji: "🔬" },
-                      { name: "Reading Champion 📚", date: "Oct 2024", color: "bg-green-500", emoji: "📚" },
-                    ].map((cert) => (
-                      <div key={cert.name} className="flex items-center gap-3 p-2 border rounded-lg">
-                        <div className={`w-8 h-8 ${cert.color} rounded-full flex items-center justify-center`}>
-                          <span className="text-white text-sm">{cert.emoji}</span>
-                        </div>
-                        <div>
-                          <p className="text-sm font-medium">{cert.name}</p>
-                          <p className="text-xs text-muted-foreground">{cert.date}</p>
-                        </div>
-                      </div>
-                    ))}
-                  </CardContent>
-                </Card>
-
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">🔮 Predictive Insights</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-3">
-                      <div className="p-3 bg-primary/5 rounded-lg">
-                        <p className="text-sm font-medium">🧮 Mathematics</p>
-                        <p className="text-xs text-muted-foreground">
-                          At this pace, you'll complete Grade 10 Math in 15 days! 🚀
-                        </p>
-                      </div>
-                      <div className="p-3 bg-secondary/5 rounded-lg">
-                        <p className="text-sm font-medium">🔬 Science</p>
-                        <p className="text-xs text-muted-foreground">
-                          Focus on Physics to improve overall score by 12% ⚡
-                        </p>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              </div>
-            </div>
+          <div className="flex justify-center items-center h-full">
+            <PomodoroTimer />
           </div>
-        )
-      case "schedule":
-        return (
-          <div className="space-y-6">
-            <div>
-              <h2 className="text-2xl font-bold">📅 Smart Schedule</h2>
-              <p className="text-muted-foreground">Manage your time and build healthy study habits</p>
-            </div>
-
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              <div className="lg:col-span-2">
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">📅 Study Calendar</CardTitle>
-                    <CardDescription>Your personalized learning schedule</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="grid grid-cols-7 gap-2 mb-4">
-                      {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => (
-                        <div key={day} className="text-center text-sm font-medium p-2">
-                          {day}
-                        </div>
-                      ))}
-                      {Array.from({ length: 35 }, (_, i) => (
-                        <div
-                          key={i}
-                          className={`h-12 border rounded flex items-center justify-center text-sm ${
-                            i % 7 === 0 || i % 7 === 6 ? "bg-muted/50" : "hover:bg-muted/50 cursor-pointer"
-                          }`}
-                          onClick={() => {
-                            if (i + 1 <= 31) {
-                              toast({
-                                title: `📅 Day ${i + 1} Selected`,
-                                description: "Click to add study sessions or view your schedule!",
-                              })
-                            }
-                          }}
-                        >
-                          {i + 1 <= 31 ? i + 1 : ""}
-                        </div>
-                      ))}
-                    </div>
-                  </CardContent>
-                </Card>
-              </div>
-
-              <div className="space-y-6">
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <Timer className="h-5 w-5" />🍅 Pomodoro Timer
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="text-center">
-                    <div className="text-4xl font-bold mb-4">{formatTime(pomodoroTime)}</div>
-                    <div className="space-y-2">
-                      <Button
-                        className="w-full"
-                        onClick={() => {
-                          setIsTimerRunning(!isTimerRunning)
-                          toast({
-                            title: isTimerRunning ? "⏸️ Timer Paused" : "▶️ Timer Started",
-                            description: isTimerRunning ? "Take a break!" : "Focus time! You got this! 💪",
-                          })
-                        }}
-                      >
-                        {isTimerRunning ? "⏸️ Pause" : "▶️ Start"} Focus Session
-                      </Button>
-                      <div className="flex gap-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="flex-1 bg-transparent"
-                          onClick={() => {
-                            setPomodoroTime(25 * 60)
-                            setIsTimerRunning(false)
-                          }}
-                        >
-                          25 min 🍅
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="flex-1 bg-transparent"
-                          onClick={() => {
-                            setPomodoroTime(15 * 60)
-                            setIsTimerRunning(false)
-                          }}
-                        >
-                          15 min ⏰
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="flex-1 bg-transparent"
-                          onClick={() => {
-                            setPomodoroTime(5 * 60)
-                            setIsTimerRunning(false)
-                          }}
-                        >
-                          5 min ☕
-                        </Button>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">📝 Today's Tasks</CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-3">
-                    {[
-                      { id: "1", task: "Math homework 🧮", time: "2:00 PM", completed: false },
-                      { id: "2", task: "Science reading 🔬", time: "4:00 PM", completed: true },
-                      { id: "3", task: "English essay ✍️", time: "6:00 PM", completed: false },
-                    ].map((task) => (
-                      <div
-                        key={task.id}
-                        className="flex items-center gap-3 p-2 border rounded-lg cursor-pointer hover:bg-muted/50"
-                        onClick={() => {
-                          toast({
-                            title: task.completed ? "✅ Task Complete!" : "📝 Task Selected",
-                            description: task.completed ? "Great job!" : `Working on: ${task.task}`,
-                          })
-                        }}
-                      >
-                        <div className={`w-2 h-2 rounded-full ${task.completed ? "bg-green-500" : "bg-primary"}`}></div>
-                        <div className="flex-1">
-                          <p className={`text-sm ${task.completed ? "line-through text-muted-foreground" : ""}`}>
-                            {task.task}
-                          </p>
-                          <p className="text-xs text-muted-foreground">{task.time}</p>
-                        </div>
-                      </div>
-                    ))}
-                  </CardContent>
-                </Card>
-              </div>
-            </div>
-          </div>
-        )
-
-      case "support":
-        return (
-          <div className="space-y-6">
-            <div>
-              <h2 className="text-2xl font-bold">🛠️ Support & Accessibility</h2>
-              <p className="text-muted-foreground">Get help and customize your learning experience</p>
-            </div>
-
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">⚙️ Accessibility Settings</CardTitle>
-                  <CardDescription>Customize the platform for your needs</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      {isDarkMode ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
-                      <span>{isDarkMode ? "🌙" : "☀️"} Dark Mode</span>
-                    </div>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        setIsDarkMode(!isDarkMode)
-                        toast({
-                          title: isDarkMode ? "☀️ Light Mode" : "🌙 Dark Mode",
-                          description: "Theme updated successfully!",
-                        })
-                      }}
-                    >
-                      {isDarkMode ? "☀️ Light" : "🌙 Dark"}
-                    </Button>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <Volume2 className="h-4 w-4" />
-                      <span>🔊 Audio Instructions</span>
-                    </div>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() =>
-                        toast({ title: "🔊 Audio Enabled", description: "Audio instructions are now active!" })
-                      }
-                    >
-                      Enable 🔊
-                    </Button>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <Languages className="h-4 w-4" />
-                      <span>🌐 Language</span>
-                    </div>
-                    <Select defaultValue="english">
-                      <SelectTrigger className="w-32">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="english">🇺🇸 English</SelectItem>
-                        <SelectItem value="hindi">🇮🇳 हिंदी</SelectItem>
-                        <SelectItem value="odia">🇮🇳 ଓଡ଼ିଆ</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">🆘 Get Help</CardTitle>
-                  <CardDescription>We're here to support your learning journey</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <Button
-                    className="w-full justify-start bg-transparent"
-                    variant="outline"
-                    onClick={() =>
-                      toast({ title: "🤖 AI Tutor", description: "Hi! I'm here to help with any questions you have!" })
-                    }
-                  >
-                    <Brain className="h-4 w-4 mr-2" />🤖 Ask AI Tutor
-                  </Button>
-                  <Button
-                    className="w-full justify-start bg-transparent"
-                    variant="outline"
-                    onClick={() =>
-                      toast({ title: "❓ FAQ", description: "Here are answers to frequently asked questions!" })
-                    }
-                  >
-                    <HelpCircle className="h-4 w-4 mr-2" />❓ FAQ & Guides
-                  </Button>
-                  <Button
-                    className="w-full justify-start bg-transparent"
-                    variant="outline"
-                    onClick={() =>
-                      toast({
-                        title: "📞 Support",
-                        description: "Your support ticket has been created. We'll get back to you soon!",
-                      })
-                    }
-                  >
-                    <Settings className="h-4 w-4 mr-2" />📞 Contact Support
-                  </Button>
-                </CardContent>
-              </Card>
-            </div>
-          </div>
-        )
-      case "ai-mentor":
-        return <AIMentorChat />
+        );
       case "profile":
-        return <StudentProfile />
+        return <StudentProfile />;
       case "settings":
-        return <StudentSettings />
+        return <StudentSettings />;
       default:
-        return null
+        return null;
     }
+  };
+
+  interface StudyMaterial {
+    id: string;
+    title: string;
+    type: string;
+    duration: string;
+    description: string;
+    completed?: boolean;
+    locked?: boolean;
   }
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-sage-50 to-blue-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
-          <p className="text-muted-foreground">Loading your progress...</p>
-        </div>
-      </div>
-    )
+  interface Subject {
+    id: string;
+    name: string;
   }
+
+  const handleReviewMaterial = (material: StudyMaterial, subject: Subject) => {
+    setReviewingMaterial({ material, subject });
+  };
+
+  const renderReviewSection = () => {
+    if (!reviewingMaterial || !reviewingMaterial.material || !reviewingMaterial.subject) {
+      return null;
+    }
+    
+    const { material, subject } = reviewingMaterial;
+    
+    return (
+      <div className="space-y-6 p-4">
+        <div className="flex items-center justify-between mb-6">
+          <h2 className="text-2xl font-bold">Review: {material.title}</h2>
+          <Button 
+            variant="outline" 
+            onClick={() => setReviewingMaterial(null)}
+            className="flex items-center gap-2"
+          >
+            <span>←</span> Back to Lessons
+          </Button>
+        </div>
+        
+        <Card className="shadow-lg">
+          <CardHeader className="border-b">
+            <div className="flex items-center gap-4">
+              <div className="p-3 rounded-lg bg-primary/10 text-primary">
+                {material.type === 'video' ? (
+                  <Video className="h-6 w-6" />
+                ) : material.type === 'document' ? (
+                  <FileText className="h-6 w-6" />
+                ) : material.type === 'audio' ? (
+                  <Headphones className="h-6 w-6" />
+                ) : (
+                  <Target className="h-6 w-6" />
+                )}
+              </div>
+              <div>
+                <h3 className="text-xl font-semibold">{material.title}</h3>
+                <p className="text-sm text-muted-foreground flex items-center gap-2">
+                  <span className="capitalize">{material.type}</span>
+                  <span>•</span>
+                  <span className="flex items-center gap-1">
+                    <Clock className="h-3.5 w-3.5" />
+                    {material.duration}
+                  </span>
+                </p>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              <p className="text-lg">{material.description}</p>
+              <div className="flex items-center gap-4">
+                <Button variant="default" className="flex items-center gap-2 bg-primary text-primary-foreground hover:bg-primary/90">
+                  <Play className="h-4 w-4" />
+                  Start Review
+                </Button>
+                <Button variant="outline" className="flex items-center gap-2">
+                  <Bookmark className="h-4 w-4" />
+                  Bookmark
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  };
+
 
   return (
-    <div className="min-h-screen bg-background">
-      {/* Header */}
-      <header className="border-b bg-card sticky top-0 z-50">
-        <div className="container mx-auto px-4 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <div className="bg-primary/10 p-2 rounded-lg">
-              <BookOpen className="h-6 w-6 text-primary" />
+    <div className="flex h-screen flex-col">
+      {/* Goal Tracker Modal */}
+      {showGoalTracker && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-background rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-2xl font-bold">Set Your Daily Goals</h2>
+                <Button 
+                  variant="ghost" 
+                  size="icon"
+                  onClick={() => setShowGoalTracker(false)}
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <line x1="18" y1="6" x2="6" y2="18"></line>
+                    <line x1="6" y1="6" x2="18" y2="18"></line>
+                  </svg>
+                </Button>
+              </div>
+              <GoalTracker />
             </div>
-            <div>
-              <h1 className="text-xl font-bold">🎓 Student Portal</h1>
-              <p className="text-sm text-muted-foreground">Government Education Platform</p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-4">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={async () => {
-                const token = await fcmService.requestPermission()
-                toast({
-                  title: "🔔 Notifications",
-                  description: token ? "Notifications enabled!" : "Permission not granted or unsupported.",
-                })
-              }}
-            >
-              <Bell className="h-4 w-4" />
-            </Button>
-            <div className="flex items-center gap-2">
-              <Avatar className="h-8 w-8">
-                <AvatarImage src={user?.avatar || "/placeholder.svg"} />
-                <AvatarFallback>👤</AvatarFallback>
-              </Avatar>
-              <span className="text-sm font-medium">{user?.name} 😊</span>
-            </div>
-            <Button variant="ghost" size="sm" onClick={logout}>
-              <User className="h-4 w-4" />
-            </Button>
           </div>
         </div>
+      )}
 
-        {/* Navigation */}
-        <div className="border-t">
-          <div className="container mx-auto px-4">
-            <nav className="flex items-center space-x-1">
-              {[
-                { id: "home", label: "Home", icon: Home },
-                { id: "lessons", label: "Lessons", icon: BookOpen },
-                { id: "games", label: "Games", icon: Gamepad2 },
-                { id: "progress", label: "Progress", icon: BarChart3 },
-                { id: "schedule", label: "Schedule", icon: Calendar },
-                { id: "ai-mentor", label: "AI Mentor", icon: Brain },
-                { id: "profile", label: "Profile", icon: User },
-                { id: "settings", label: "Settings", icon: Settings },
-                { id: "support", label: "Support", icon: HelpCircle },
-              ].map((item) => (
-                <Button
-                  key={item.id}
-                  variant={currentPage === item.id ? "default" : "ghost"}
-                  size="sm"
-                  onClick={() => setCurrentPage(item.id as StudentPage)}
-                  className="flex items-center gap-2"
+      {/* Progress Dashboard Modal */}
+      {showProgressDashboard && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-background rounded-lg max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-2xl font-bold">Your Progress Dashboard</h2>
+                <Button 
+                  variant="ghost" 
+                  size="icon"
+                  onClick={() => setShowProgressDashboard(false)}
                 >
-                  <item.icon className="h-4 w-4" />
-                  <span className="hidden md:inline">{item.label}</span>
+                  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <line x1="18" y1="6" x2="6" y2="18"></line>
+                    <line x1="6" y1="6" x2="18" y2="18"></line>
+                  </svg>
                 </Button>
-              ))}
-            </nav>
+              </div>
+              
+              <div className="space-y-6">
+                {/* Performance Heatmap */}
+                <PerformanceHeatmap data={weeklyProgress} title="Learning Activity" metric="XP" />
+                
+                {/* Subject Analytics */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Subject Progress</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="grid gap-4 md:grid-cols-2">
+                      {subjectAnalytics.map((subject) => (
+                        <div key={subject.subject} className="space-y-2 p-4 border rounded-lg">
+                          <div className="flex items-center justify-between">
+                            <h4 className="font-medium">{subject.subject}</h4>
+                            <Badge variant="outline">{subject.accuracy}% accuracy</Badge>
+                          </div>
+                          <Progress value={(subject.completed / subject.total) * 100} className="h-2" />
+                          <div className="flex justify-between text-sm text-muted-foreground">
+                            <span>{subject.completed}/{subject.total} lessons</span>
+                            <span>{subject.timeSpent} min total</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+                
+                {/* Overall Stats */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Overall Statistics</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="grid gap-4 md:grid-cols-4">
+                      <div className="text-center">
+                        <div className="text-2xl font-bold text-blue-600">{extendedProgress?.totalXP || 0}</div>
+                        <div className="text-sm text-muted-foreground">Total XP</div>
+                      </div>
+                      <div className="text-center">
+                        <div className="text-2xl font-bold text-green-600">{extendedProgress?.streak || 0}</div>
+                        <div className="text-sm text-muted-foreground">Day Streak</div>
+                      </div>
+                      <div className="text-center">
+                        <div className="text-2xl font-bold text-purple-600">{progress?.totalLessonsCompleted || 0}</div>
+                        <div className="text-sm text-muted-foreground">Lessons Completed</div>
+                      </div>
+                      <div className="text-center">
+                        <div className="text-2xl font-bold text-orange-600">{extendedProgress?.coins || 0}</div>
+                        <div className="text-sm text-muted-foreground">Coins Earned</div>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Header */}
+      <header className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+        <div className="container flex h-16 items-center justify-between px-4">
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2">
+              <img src="/student-logo.svg" alt="Student Portal" className="w-8 h-8" />
+              <img src="/indian-education-emblem.svg" alt="Indian Education" className="w-10 h-10" />
+            </div>
+            <div className="flex items-center gap-2">
+              <Gamepad2 className="h-6 w-6" />
+              <span className="text-lg font-semibold">Pragyadhara - Student Portal</span>
+            </div>
+          </div>
+          
+          <nav className="hidden md:flex items-center gap-2">
+            {navItems.map((item) => (
+              <Button
+                key={item.id}
+                variant="ghost"
+                onClick={() => setCurrentPage(item.id as StudentPage)}
+                className="flex items-center gap-2"
+              >
+                <item.icon className="h-4 w-4" />
+                {item.label}
+              </Button>
+            ))}
+          </nav>
+          
+          <div className="flex items-center gap-2">
+            <Button 
+              variant="outline" 
+              size="icon"
+              onClick={() => setShowNotifications(!showNotifications)}
+              className="relative"
+            >
+              <Bell className="h-4 w-4" />
+              {notifications.some(n => !n.read) && (
+                <span className="absolute -top-1 -right-1 h-3 w-3 rounded-full bg-red-500"></span>
+              )}
+            </Button>
+            
+            <LanguageSelector variant="outline" size="sm" />
+            
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" className="relative h-8 w-8 rounded-full">
+                  <Avatar className="h-8 w-8">
+                    <AvatarImage src={user?.photoURL || ''} alt={user?.displayName || 'User'} />
+                    <AvatarFallback>{user?.displayName?.[0] || 'U'}</AvatarFallback>
+                  </Avatar>
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent className="w-56" align="end" forceMount>
+                <DropdownMenuLabel className="font-normal">
+                  <div className="flex flex-col space-y-1">
+                    <p className="text-sm font-medium leading-none">{user?.displayName || 'User'}</p>
+                    <p className="text-xs leading-none text-muted-foreground">
+                      {user?.email || 'No email'}
+                    </p>
+                  </div>
+                </DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem className="cursor-pointer">
+                  <User className="mr-2 h-4 w-4" />
+                  <span>Profile</span>
+                </DropdownMenuItem>
+                <DropdownMenuItem 
+                  className="cursor-pointer"
+                  onClick={() => setCurrentPage('settings')}
+                >
+                  <Settings className="mr-2 h-4 w-4" />
+                  <span>Settings</span>
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem className="cursor-pointer" onClick={() => signOut()}>
+                  <LogOut className="mr-2 h-4 w-4" />
+                  <span>Log out</span>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </div>
       </header>
 
+      {/* Notification Panel */}
+      <div 
+        className={`fixed inset-0 bg-black/50 z-40 transition-opacity duration-300 ${
+          showNotifications ? 'opacity-100' : 'opacity-0 pointer-events-none'
+        }`}
+        onClick={() => setShowNotifications(false)}
+      ></div>
+      <div 
+        className={`fixed top-0 right-0 h-full w-80 bg-background border-l shadow-lg z-50 transform transition-transform duration-300 ease-in-out ${
+          showNotifications ? 'translate-x-0' : 'translate-x-full'
+        }`}
+      >
+        <div className="p-4 border-b flex justify-between items-center">
+          <h2 className="text-lg font-semibold">Notifications</h2>
+          <Button 
+            variant="ghost" 
+            size="icon" 
+            onClick={() => setShowNotifications(false)}
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="18" y1="6" x2="6" y2="18"></line>
+              <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+          </Button>
+        </div>
+        <div className="p-4">
+          {notifications.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground">
+              <Bell className="mx-auto h-8 w-8 mb-2 opacity-50" />
+              <p>No notifications yet</p>
+              <p className="text-xs mt-1">We'll notify you when there's something new</p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {notifications.map((notification) => (
+                <div 
+                  key={notification.id}
+                  className={`p-3 rounded-lg border ${
+                    !notification.read ? 'bg-blue-50 dark:bg-blue-900/20' : 'bg-background'
+                  }`}
+                >
+                  <p className="text-sm">{notification.message}</p>
+                  <p className="text-xs text-muted-foreground mt-1">{notification.date}</p>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
       {/* Main Content */}
-      <main className="container mx-auto px-4 py-6">{renderPage()}</main>
+      <main className={`flex-1 overflow-y-auto p-4 md:p-6 transition-all duration-300 ${
+        showNotifications ? 'mr-80' : ''
+      }`}>
+        {currentPage === 'pomodoro-timer' ? (
+          <div className="container mx-auto max-w-4xl">
+            <PomodoroTimer />
+          </div>
+        ) : (
+          renderPage()
+        )}
+      </main>
     </div>
-  )
+  );
 }

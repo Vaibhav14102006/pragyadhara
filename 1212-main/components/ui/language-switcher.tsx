@@ -1,36 +1,44 @@
-"use client"
+﻿"use client"
 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { useLanguage } from "@/components/language/language-provider"
+import { useLanguage } from "@/lib/language-context"
 import { Globe } from "lucide-react"
 
 const languages = [
-  { code: "en", name: "English", flag: "🇺🇸" },
-  { code: "hi", name: "हिंदी", flag: "🇮🇳" },
-  { code: "bn", name: "বাংলা", flag: "🇧🇩" },
-  { code: "te", name: "తెలుగు", flag: "🇮🇳" },
-  { code: "mr", name: "मराठी", flag: "🇮🇳" },
-  { code: "ta", name: "தமிழ்", flag: "🇮🇳" },
-  { code: "gu", name: "ગુજરાતી", flag: "🇮🇳" },
-  { code: "kn", name: "ಕನ್ನಡ", flag: "🇮🇳" },
-  { code: "ml", name: "മലയാളം", flag: "🇮🇳" },
-  { code: "pa", name: "ਪੰਜਾਬੀ", flag: "🇮🇳" }
+  { code: "en", name: "English", nativeName: "English", flag: "" },
+  { code: "hi", name: "Hindi", nativeName: "हद", flag: "" },
+  { code: "bn", name: "Bengali", nativeName: "বল", flag: "" },
+  { code: "te", name: "Telugu", nativeName: "తలగ", flag: "" },
+  { code: "mr", name: "Marathi", nativeName: "मरठ", flag: "" },
+  { code: "ta", name: "Tamil", nativeName: "தமழ", flag: "" },
+  { code: "gu", name: "Gujarati", nativeName: "ગજરત", flag: "" },
+  { code: "kn", name: "Kannada", nativeName: "ಕನನಡ", flag: "" },
+  { code: "ml", name: "Malayalam", nativeName: "മലയള", flag: "" },
+  { code: "pa", name: "Punjabi", nativeName: "ਪਜਬ", flag: "" }
 ]
 
 export function LanguageSwitcher() {
-  const { currentLanguage, setLanguage, supportedLanguages } = useLanguage()
+  const { currentLanguage, setLanguage } = useLanguage()
+
+  const handleLanguageChange = (value: string) => {
+    const selectedLanguage = languages.find(lang => lang.code === value)
+    if (selectedLanguage) {
+      setLanguage(selectedLanguage)
+    }
+  }
 
   return (
-    <Select value={currentLanguage.code} onValueChange={setLanguage}>
-      <SelectTrigger className="w-auto min-w-[120px] border-0 bg-transparent">
+    <Select value={currentLanguage.code} onValueChange={handleLanguageChange}>
+      <SelectTrigger className="w-40">
         <div className="flex items-center gap-2">
           <Globe className="h-4 w-4" />
-          <span className="hidden sm:inline">{currentLanguage.flag}</span>
-          <SelectValue />
+          <span className="text-sm">
+            {currentLanguage.flag} {currentLanguage.nativeName}
+          </span>
         </div>
       </SelectTrigger>
       <SelectContent>
-        {supportedLanguages.slice(0, 10).map((lang) => (
+        {languages.map((lang) => (
           <SelectItem key={lang.code} value={lang.code}>
             <div className="flex items-center gap-2">
               <span>{lang.flag}</span>

@@ -1,0 +1,35 @@
+<svg width="120" height="80" viewBox="0 0 120 80" xmlns="http://www.w3.org/2000/svg">
+  <!-- Ashoka Chakra Emblem -->
+  <defs>
+    <radialGradient id="chakraGrad" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" style="stop-color:#000080;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#000040;stop-opacity:1" />
+    </radialGradient>
+  </defs>
+  
+  <!-- Background -->
+  <rect width="120" height="80" fill="#FFFFFF" stroke="#000080" stroke-width="2"/>
+  
+  <!-- Central Chakra -->
+  <circle cx="60" cy="40" r="25" fill="url(#chakraGrad)" stroke="#FFD700" stroke-width="2"/>
+  
+  <!-- Chakra spokes -->
+  <g stroke="#FFFFFF" stroke-width="1.5">
+    <line x1="60" y1="15" x2="60" y2="65"/>
+    <line x1="35" y1="40" x2="85" y2="40"/>
+    <line x1="42.2" y1="22.2" x2="77.8" y2="57.8"/>
+    <line x1="77.8" y1="22.2" x2="42.2" y2="57.8"/>
+    
+    <!-- Additional spokes for 24-spoke chakra -->
+    <line x1="47.5" y1="17.5" x2="72.5" y2="62.5"/>
+    <line x1="72.5" y1="17.5" x2="47.5" y2="62.5"/>
+    <line x1="37.5" y1="27.5" x2="82.5" y2="52.5"/>
+    <line x1="82.5" y1="27.5" x2="37.5" y2="52.5"/>
+  </g>
+  
+  <!-- Central hub -->
+  <circle cx="60" cy="40" r="5" fill="#FFD700" stroke="#FFFFFF" stroke-width="1"/>
+  
+  <!-- Government text -->
+  <text x="60" y="72" text-anchor="middle" font-family="Arial" font-size="8" fill="#000080" font-weight="bold">GOVERNMENT OF INDIA</text>
+</svg>

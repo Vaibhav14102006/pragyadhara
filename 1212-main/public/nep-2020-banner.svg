@@ -1,0 +1,53 @@
+<svg width="200" height="80" viewBox="0 0 200 80" xmlns="http://www.w3.org/2000/svg">
+  <!-- NEP 2020 Banner -->
+  <defs>
+    <linearGradient id="nep2020Grad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#FF9933;stop-opacity:1" />
+      <stop offset="50%" style="stop-color:#FFFFFF;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#138808;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  
+  <!-- Background -->
+  <rect width="200" height="80" fill="url(#nep2020Grad)" rx="8" stroke="#000080" stroke-width="2"/>
+  
+  <!-- Central emblem -->
+  <circle cx="40" cy="40" r="25" fill="#000080" stroke="#FFD700" stroke-width="2"/>
+  
+  <!-- Ashoka Chakra (simplified) -->
+  <circle cx="40" cy="40" r="18" fill="none" stroke="#FFFFFF" stroke-width="1.5"/>
+  <g stroke="#FFFFFF" stroke-width="1">
+    <line x1="40" y1="22" x2="40" y2="58"/>
+    <line x1="22" y1="40" x2="58" y2="40"/>
+    <line x1="28" y1="28" x2="52" y2="52"/>
+    <line x1="52" y1="28" x2="28" y2="52"/>
+    <!-- Additional spokes -->
+    <line x1="31" y1="25" x2="49" y2="55"/>
+    <line x1="49" y1="25" x2="31" y2="55"/>
+    <line x1="25" y1="31" x2="55" y2="49"/>
+    <line x1="55" y1="31" x2="25" y2="49"/>
+  </g>
+  
+  <!-- Central hub -->
+  <circle cx="40" cy="40" r="4" fill="#FFD700"/>
+  
+  <!-- Text sections -->
+  <text x="85" y="25" font-family="Arial" font-size="14" fill="#000080" font-weight="bold">NATIONAL EDUCATION</text>
+  <text x="85" y="40" font-family="Arial" font-size="14" fill="#000080" font-weight="bold">POLICY 2020</text>
+  <text x="85" y="55" font-family="Arial" font-size="10" fill="#138808" font-weight="bold">राष्ट्रीय शिक्षा नीति २०२०</text>
+  <text x="85" y="68" font-family="Arial" font-size="8" fill="#FF9933" font-weight="bold">GOVERNMENT OF INDIA</text>
+  
+  <!-- Decorative elements -->
+  <circle cx="175" cy="15" r="3" fill="#FFD700"/>
+  <circle cx="185" cy="20" r="2" fill="#FF9933"/>
+  <circle cx="175" cy="65" r="3" fill="#138808"/>
+  <circle cx="185" cy="60" r="2" fill="#000080"/>
+  
+  <!-- Book stack -->
+  <rect x="165" y="30" width="8" height="12" fill="#DC2626" rx="1"/>
+  <rect x="167" y="32" width="4" height="8" fill="#FFFFFF" opacity="0.3"/>
+  <rect x="175" y="30" width="8" height="12" fill="#4F46E5" rx="1"/>
+  <rect x="177" y="32" width="4" height="8" fill="#FFFFFF" opacity="0.3"/>
+  <rect x="170" y="25" width="8" height="12" fill="#10B981" rx="1"/>
+  <rect x="172" y="27" width="4" height="8" fill="#FFFFFF" opacity="0.3"/>
+</svg>

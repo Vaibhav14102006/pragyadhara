@@ -1,0 +1,32 @@
+<svg width="120" height="60" viewBox="0 0 120 60" xmlns="http://www.w3.org/2000/svg">
+  <!-- Atmanirbhar Bharat Logo -->
+  <defs>
+    <linearGradient id="atmanirbharGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#FF9933;stop-opacity:1" />
+      <stop offset="33%" style="stop-color:#FFFFFF;stop-opacity:1" />
+      <stop offset="66%" style="stop-color:#138808;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#000080;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  
+  <!-- Background -->
+  <rect width="120" height="60" fill="url(#atmanirbharGrad)" opacity="0.1" rx="8"/>
+  
+  <!-- Lion symbol (simplified) -->
+  <circle cx="25" cy="30" r="18" fill="#000080" stroke="#FFD700" stroke-width="2"/>
+  <circle cx="25" cy="30" r="12" fill="#FFD700" opacity="0.3"/>
+  
+  <!-- Lion features -->
+  <circle cx="22" cy="27" r="1.5" fill="#000080"/>
+  <circle cx="28" cy="27" r="1.5" fill="#000080"/>
+  <path d="M20,32 Q25,35 30,32" stroke="#000080" stroke-width="2" fill="none"/>
+  
+  <!-- Crown/mane -->
+  <path d="M15,20 Q25,15 35,20 Q30,25 25,22 Q20,25 15,20 Z" fill="#FF9933"/>
+  
+  <!-- Text */
+  <text x="50" y="20" font-family="Arial" font-size="8" fill="#000080" font-weight="bold">ATMANIRBHAR</text>
+  <text x="50" y="32" font-family="Arial" font-size="8" fill="#138808" font-weight="bold">BHARAT</text>
+  <text x="50" y="44" font-family="Arial" font-size="6" fill="#FF9933" font-weight="bold">आत्मनिर्भर भारत</text>
+  <text x="50" y="52" font-family="Arial" font-size="5" fill="#000080">Self-Reliant India</text>
+</svg>

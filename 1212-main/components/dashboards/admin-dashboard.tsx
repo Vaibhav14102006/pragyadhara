@@ -2,8 +2,8 @@
 
 import { useState } from "react"
 import { useRouter } from "next/navigation"
-import { useAuth } from "@/components/auth/auth-provider"
-import { useLanguage } from "@/components/language/language-provider"
+import { useAuth } from "@/lib/auth-context"
+import { useLanguage } from "@/lib/language-context"
 import { LanguageSwitcher } from "@/components/ui/language-switcher"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -421,9 +421,17 @@ export function AdminDashboard() {
   const HomePage = () => (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-3xl font-bold tracking-tight">{t("dashboard.title")}</h2>
-          <p className="text-muted-foreground">{t("dashboard.welcome")}, {adminProfile.name}</p>
+        <div className="flex items-start gap-4">
+          <div className="flex items-center gap-2">
+            <img src="/admin-logo.svg" alt="Admin Portal" className="w-12 h-12" />
+            <img src="/government-emblem.svg" alt="Government Emblem" className="w-10 h-10" />
+            <img src="/indian-education-emblem.svg" alt="Indian Education" className="w-12 h-12" />
+          </div>
+          <div>
+            <h2 className="text-3xl font-bold tracking-tight">{t("dashboard.title")}</h2>
+            <p className="text-muted-foreground">{t("dashboard.welcome")}, {adminProfile.name}</p>
+            <p className="text-xs text-blue-700 font-semibold mt-1">🇮🇳 Government Administration | प्रशासन | Pragyadhara Admin Portal</p>
+          </div>
         </div>
         <div className="flex items-center gap-4">
           <LanguageSwitcher />
